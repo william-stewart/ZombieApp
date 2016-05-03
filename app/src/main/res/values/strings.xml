@@ -15,7 +15,7 @@
   limitations under the License.
 -->
 <resources>
-    <string name="app_name">Getting Location Updates</string>
+    <string name="app_name">Zombie App</string>
 
     <string name="latitude_label">Latitude</string>
     <string name="longitude_label">Longitude</string>

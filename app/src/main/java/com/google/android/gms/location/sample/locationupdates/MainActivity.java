@@ -18,6 +18,7 @@ package com.google.android.gms.location.sample.locationupdates;
 
 import android.location.Location;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
@@ -33,6 +34,11 @@ import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -89,6 +95,8 @@ public class MainActivity extends AppCompatActivity implements
      */
     protected Location mCurrentLocation;
 
+    protected String mUid;
+
     // UI Widgets.
     protected Button mStartUpdatesButton;
     protected Button mStopUpdatesButton;
@@ -123,6 +131,9 @@ public class MainActivity extends AppCompatActivity implements
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main_activity);
 
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
+
         // Locate the UI widgets.
         mStartUpdatesButton = (Button) findViewById(R.id.start_updates_button);
         mStopUpdatesButton = (Button) findViewById(R.id.stop_updates_button);
@@ -141,15 +152,18 @@ public class MainActivity extends AppCompatActivity implements
         mAccuracyLabel = "Accuracy";
         mLastUpdateTimeLabel = getResources().getString(R.string.last_update_time_label);
 
-        mRequestingLocationUpdates = false;
+        mRequestingLocationUpdates = true;
+        setButtonsEnabledState();
+
         mLastUpdateTime = "";
 
         // Update values using data stored in the Bundle.
         updateValuesFromBundle(savedInstanceState);
 
         // Set the Unique ID
+        mUid = UidProvider.getUniqueId(this);
         mUidTextView.setText(String.format(Locale.US, "%s: %s", mUidLabel,
-                UidProvider.getUniqueId(this)));
+                mUid));
 
         // Kick off the process of building a GoogleApiClient and requesting the LocationServices
         // API.
@@ -298,6 +312,44 @@ public class MainActivity extends AppCompatActivity implements
                 mLastUpdateTime));
     }
 
+    private void notifyDatabase() {
+        try {
+            URL url = new URL("http://cs.furman.edu/~wstewart/webservice.php");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            String postdat = "userid"
+                    + "="
+                    + URLEncoder.encode(mUid, "UTF-8")
+                    + "&"
+                    + "latitude"
+                    + "="
+                    + URLEncoder.encode(Double.toString(mCurrentLocation.getLatitude()), "UTF-8")
+                    + "&"
+                    + "longitude"
+                    + "="
+                    + URLEncoder.encode(Double.toString(mCurrentLocation.getLongitude()), "UTF-8")
+                    + "&"
+                    + "time"
+                    + "="
+                    + URLEncoder.encode(mLastUpdateTime, "UTF-8")
+                    + "&"
+                    + "";
+            //Sends info
+            conn.setFixedLengthStreamingMode(postdat.getBytes().length);
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            java.io.BufferedOutputStream out = new java.io.BufferedOutputStream(conn.getOutputStream());
+            PrintStream pstream = new PrintStream(out);
+            pstream.print(postdat);
+            pstream.close();
+        }
+        catch(java.net.MalformedURLException ex){
+            //Toast.makeText(this, ex.toString(), duration ).show();
+        }
+        catch(IOException e) {
+            //Toast.makeText(this, ex.toString(), duration).show();
+        }
+    }
+
     /**
      * Removes location updates from the FusedLocationApi.
      */
@@ -366,7 +418,7 @@ public class MainActivity extends AppCompatActivity implements
             mCurrentLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
 
             if(mCurrentLocation != null) {
-                mLastUpdateTime = Long.toString(mCurrentLocation.getTime());
+                mLastUpdateTime = Long.toString(mCurrentLocation.getTime() / 1000L);
                 updateUI();
             }
         }
@@ -385,8 +437,9 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     public void onLocationChanged(Location location) {
         mCurrentLocation = location;
-        mLastUpdateTime = Long.toString(mCurrentLocation.getTime());
+        mLastUpdateTime = Long.toString(mCurrentLocation.getTime() / 1000L);
         updateUI();
+        notifyDatabase();
         Toast.makeText(this, getResources().getString(R.string.location_updated_message),
                 Toast.LENGTH_SHORT).show();
     }
