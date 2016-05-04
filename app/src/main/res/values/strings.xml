@@ -24,4 +24,6 @@
     <string name="start_updates">Start updates</string>
     <string name="stop_updates">Stop updates</string>
     <string name="location_updated_message">Location updated</string>
+
+    <string name="google_maps_key">AIzaSyAhn7_Hzptp22h3UfcLHp71HcbRcekKd2Y</string>
 </resources>

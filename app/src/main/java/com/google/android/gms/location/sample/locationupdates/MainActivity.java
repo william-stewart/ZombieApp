@@ -33,14 +33,18 @@ import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListe
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.text.DateFormat;
-import java.util.Date;
 import java.util.Locale;
 
 /**
@@ -58,7 +62,7 @@ import java.util.Locale;
  * https://github.com/googlesamples/android-google-accounts/tree/master/QuickStart.
  */
 public class MainActivity extends AppCompatActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener, LocationListener {
+        ConnectionCallbacks, OnConnectionFailedListener, LocationListener, OnMapReadyCallback {
 
     protected static final String TAG = "location-updates-sample";
 
@@ -94,12 +98,15 @@ public class MainActivity extends AppCompatActivity implements
      * Represents a geographical location.
      */
     protected Location mCurrentLocation;
+    protected LocationHistoryManager mLocationHistoryManager;
+    protected GoogleMap mMap;
 
     protected String mUid;
 
     // UI Widgets.
     protected Button mStartUpdatesButton;
     protected Button mStopUpdatesButton;
+    protected MapFragment mMapFragment;
     protected TextView mUidTextView;
     protected TextView mLastUpdateTimeTextView;
     protected TextView mLatitudeTextView;
@@ -137,6 +144,7 @@ public class MainActivity extends AppCompatActivity implements
         // Locate the UI widgets.
         mStartUpdatesButton = (Button) findViewById(R.id.start_updates_button);
         mStopUpdatesButton = (Button) findViewById(R.id.stop_updates_button);
+        mMapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map_fragment);
         mUidTextView = (TextView) findViewById(R.id.uid_text);
         mLatitudeTextView = (TextView) findViewById(R.id.latitude_text);
         mLongitudeTextView = (TextView) findViewById(R.id.longitude_text);
@@ -152,8 +160,12 @@ public class MainActivity extends AppCompatActivity implements
         mAccuracyLabel = "Accuracy";
         mLastUpdateTimeLabel = getResources().getString(R.string.last_update_time_label);
 
+        mMapFragment.getMapAsync(this);
+
         mRequestingLocationUpdates = true;
         setButtonsEnabledState();
+
+        mLocationHistoryManager = new LocationHistoryManager(5);
 
         mLastUpdateTime = "";
 
@@ -310,6 +322,27 @@ public class MainActivity extends AppCompatActivity implements
                 mCurrentLocation.getAccuracy()));
         mLastUpdateTimeTextView.setText(String.format(Locale.US, "%s: %s", mLastUpdateTimeLabel,
                 mLastUpdateTime));
+
+
+        if(mMap != null) {
+            mMap.clear();
+
+            int count = 0;
+            float markerAlpha;
+            for (Location l : mLocationHistoryManager.getAll()) {
+                // Normalize alpha so that the first marker isn't entirely transparent
+                markerAlpha = (count+1.0f)/(mLocationHistoryManager.getSize()+1.0f);
+
+                LatLng mLatLng = new LatLng(l.getLatitude(), l.getLongitude());
+                mMap.addMarker(new MarkerOptions().position(mLatLng).alpha(markerAlpha));
+
+                count ++;
+                // Focus and zoom the camera on the most recent marker
+                if(count == mLocationHistoryManager.getSize()) {
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mLatLng, 20));
+                }
+            }
+        }
     }
 
     private void notifyDatabase() {
@@ -348,6 +381,10 @@ public class MainActivity extends AppCompatActivity implements
         catch(IOException e) {
             //Toast.makeText(this, ex.toString(), duration).show();
         }
+    }
+
+    private void logLocation() {
+        mLocationHistoryManager.add(mCurrentLocation);
     }
 
     /**
@@ -438,6 +475,7 @@ public class MainActivity extends AppCompatActivity implements
     public void onLocationChanged(Location location) {
         mCurrentLocation = location;
         mLastUpdateTime = Long.toString(mCurrentLocation.getTime() / 1000L);
+        logLocation();
         updateUI();
         notifyDatabase();
         Toast.makeText(this, getResources().getString(R.string.location_updated_message),
@@ -468,5 +506,10 @@ public class MainActivity extends AppCompatActivity implements
         savedInstanceState.putParcelable(LOCATION_KEY, mCurrentLocation);
         savedInstanceState.putString(LAST_UPDATED_TIME_STRING_KEY, mLastUpdateTime);
         super.onSaveInstanceState(savedInstanceState);
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        mMap = googleMap;
     }
 }
