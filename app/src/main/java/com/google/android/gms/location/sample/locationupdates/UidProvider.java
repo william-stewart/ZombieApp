@@ -12,63 +12,87 @@ import java.io.RandomAccessFile;
 import java.util.UUID;
 
 public class UidProvider {
-    private static final String EMULATOR_ANDROID_ID = "9774d56d682e549c";
-    private static final String[] BAD_SERIAL_PATTERNS = {"1234567", "abcdef", "dead00beef"};
 
     public static String getUniqueId(Context context) {
-        String deviceId;
-        String androidSerialId = null;
-        try {
-            // try to get device serial number
-            androidSerialId = Build.SERIAL;
-        } catch (NoSuchFieldError ignored) {
-        }
+        String deviceId = null;
 
-        if (!TextUtils.isEmpty(androidSerialId) && !Build.UNKNOWN.equals(androidSerialId) && !isBadSerial(androidSerialId)) {
-            deviceId = androidSerialId;
-        } else {
-            // try to use Settings.Secure.ANDROID_ID
-            // could be different after factory reset
-            String androidSecureId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-            if (!TextUtils.isEmpty(androidSecureId) && !EMULATOR_ANDROID_ID.equals(androidSecureId) && !isBadDeviceId(androidSecureId)
-                    && androidSecureId.length() == EMULATOR_ANDROID_ID.length()) {
-                deviceId = androidSecureId;
-            } else {
-                deviceId = SoftInstallationId.id(context);
-            }
-        }
+        deviceId = DeviceSerialIdProvider.getDeviceSerialId();
+        if (deviceId != null)
+            return generateUuidStringFromId(deviceId);
+
+        deviceId = AndroidSecureIdProvider.getAndroidSecureId(context);
+        if (deviceId != null)
+            return generateUuidStringFromId(deviceId);
+
+        deviceId = SoftInstallationIdProvider.getSoftInstallationId(context);
+        return deviceId;
+    }
+
+    private static String generateUuidStringFromId(String deviceId) {
         return UUID.nameUUIDFromBytes(deviceId.getBytes()).toString();
     }
 
-    private static boolean isBadDeviceId(String id) {
-        // empty or contains only spaces or 0
-        return TextUtils.isEmpty(id) || TextUtils.isEmpty(id.replace('0', ' ').replace('-', ' ').trim());
-    }
+    private static class DeviceSerialIdProvider {
+        private static final String[] IGNORED_SERIAL_PATTERNS = {"1234567", "abcdef", "dead00beef"};
 
-    private static boolean isBadSerial(String id) {
-        if (!TextUtils.isEmpty(id)) {
-            id = id.toLowerCase();
-            for (String pattern : BAD_SERIAL_PATTERNS) {
-                if (id.contains(pattern)) {
-                    return true;
+        public synchronized static String getDeviceSerialId() {
+            try {
+                if (isValidDeviceSerialId(Build.SERIAL)) {
+                    return Build.SERIAL;
                 }
+            } catch (NoSuchFieldError error) {
             }
-        } else {
-            return true;
+            return null;
         }
-        return false;
+
+        private static boolean isValidDeviceSerialId(String serialId) {
+            return (!TextUtils.isEmpty(serialId) && !Build.UNKNOWN.equals(serialId) && !isIgnoredSerial(serialId));
+        }
+
+        private static boolean isIgnoredSerial(String id) {
+            if (!TextUtils.isEmpty(id)) {
+                id = id.toLowerCase();
+                for (String pattern : IGNORED_SERIAL_PATTERNS) {
+                    if (id.contains(pattern)) {
+                        return true;
+                    }
+                }
+            } else {
+                return true;
+            }
+            return false;
+        }
     }
 
-    /**
-     * Class generates id for current application installation
-     */
-    private static class SoftInstallationId {
-        private static String sID = null;
-        private static final String INSTALLATION = "INSTALLATION";
+    private static class AndroidSecureIdProvider {
+        private static final String ANDROID_EMULATOR_ID = "9774d56d682e549c";
 
-        public synchronized static String id(Context context) {
+        public synchronized static String getAndroidSecureId(Context context) {
+            String androidSecureId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (isValidAndroidSecureId(androidSecureId)) {
+                return androidSecureId;
+            }
+            return null;
+        }
+
+        private static boolean isValidAndroidSecureId(String androidSecureId) {
+            return (!TextUtils.isEmpty(androidSecureId) && !ANDROID_EMULATOR_ID.equals(androidSecureId) && !isIgnoredDeviceId(androidSecureId)
+                    && androidSecureId.length() == ANDROID_EMULATOR_ID.length());
+        }
+
+        private static boolean isIgnoredDeviceId(String id) {
+            // empty or contains only spaces or 0
+            return TextUtils.isEmpty(id) || TextUtils.isEmpty(id.replace('0', ' ').replace('-', ' ').trim());
+        }
+    }
+
+    private static class SoftInstallationIdProvider {
+        private static final String INSTALLATION_FILE_NAME = "INSTALLATION";
+        private static String sID = null;
+
+        public synchronized static String getSoftInstallationId(Context context) {
             if (sID == null) {
-                File installation = new File(context.getFilesDir(), INSTALLATION);
+                File installation = new File(context.getFilesDir(), INSTALLATION_FILE_NAME);
                 try {
                     if (!installation.exists()) {
                         writeInstallationFile(installation);

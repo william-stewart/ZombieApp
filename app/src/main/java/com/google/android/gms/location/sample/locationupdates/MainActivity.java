@@ -64,21 +64,18 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity implements
         ConnectionCallbacks, OnConnectionFailedListener, LocationListener, OnMapReadyCallback {
 
-    protected static final String TAG = "location-updates-sample";
-
     /**
      * The desired interval for location updates. Inexact. Updates may be more or less frequent.
      */
     public static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
     public static final float SMALLEST_DISPLACEMENT_IN_METERS = 0.0f;
-
     /**
      * The fastest rate for active location updates. Exact. Updates will never be more frequent
      * than this value.
      */
     public static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
-
+    protected static final String TAG = "location-updates-sample";
     // Keys for storing activity state in the Bundle.
     protected final static String REQUESTING_LOCATION_UPDATES_KEY = "requesting-location-updates-key";
     protected final static String LOCATION_KEY = "location-key";
@@ -101,6 +98,9 @@ public class MainActivity extends AppCompatActivity implements
     protected LocationHistoryManager mLocationHistoryManager;
     protected GoogleMap mMap;
 
+    /**
+     * Represents an unique device identification.
+     */
     protected String mUid;
 
     // UI Widgets.
@@ -154,28 +154,28 @@ public class MainActivity extends AppCompatActivity implements
 
         // Set labels.
         mUidLabel = "UID";
-        mLatitudeLabel = getResources().getString(R.string.latitude_label);
-        mLongitudeLabel = getResources().getString(R.string.longitude_label);
+        mLatitudeLabel = "Latitude";
+        mLongitudeLabel = "Longitude";
         mAltitudeLabel = "Altitude";
         mAccuracyLabel = "Accuracy";
-        mLastUpdateTimeLabel = getResources().getString(R.string.last_update_time_label);
+        mLastUpdateTimeLabel = "Last location update time";
 
+        // Prepares the map fragment for display and manipulation.
         mMapFragment.getMapAsync(this);
 
+        // Request location updates by default.
         mRequestingLocationUpdates = true;
         setButtonsEnabledState();
 
+        // Save a set number of location records as history for display.
         mLocationHistoryManager = new LocationHistoryManager(5);
-
-        mLastUpdateTime = "";
 
         // Update values using data stored in the Bundle.
         updateValuesFromBundle(savedInstanceState);
 
         // Set the Unique ID
         mUid = UidProvider.getUniqueId(this);
-        mUidTextView.setText(String.format(Locale.US, "%s: %s", mUidLabel,
-                mUid));
+        mUidTextView.setText(String.format(Locale.US, "%s: %s", mUidLabel, mUid));
 
         // Kick off the process of building a GoogleApiClient and requesting the LocationServices
         // API.
@@ -324,21 +324,23 @@ public class MainActivity extends AppCompatActivity implements
                 mLastUpdateTime));
 
 
+        // If map is available, plot the location history.
         if(mMap != null) {
+            // Remove all previous markers from map.
             mMap.clear();
 
-            int count = 0;
+            int index = 0;
             float markerAlpha;
             for (Location l : mLocationHistoryManager.getAll()) {
                 // Normalize alpha so that the first marker isn't entirely transparent
-                markerAlpha = (count+1.0f)/(mLocationHistoryManager.getSize()+1.0f);
+                markerAlpha = (index + 1.0f) / (mLocationHistoryManager.getSize() + 1.0f);
 
                 LatLng mLatLng = new LatLng(l.getLatitude(), l.getLongitude());
                 mMap.addMarker(new MarkerOptions().position(mLatLng).alpha(markerAlpha));
 
-                count ++;
+                index++;
                 // Focus and zoom the camera on the most recent marker
-                if(count == mLocationHistoryManager.getSize()) {
+                if (index == mLocationHistoryManager.getSize()) {
                     mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mLatLng, 20));
                 }
             }
@@ -347,42 +349,37 @@ public class MainActivity extends AppCompatActivity implements
 
     private void notifyDatabase() {
         try {
+            // Open connection to database wrapper.
             URL url = new URL("http://cs.furman.edu/~wstewart/webservice.php");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
-            String postdat = "userid"
-                    + "="
-                    + URLEncoder.encode(mUid, "UTF-8")
-                    + "&"
-                    + "latitude"
-                    + "="
-                    + URLEncoder.encode(Double.toString(mCurrentLocation.getLatitude()), "UTF-8")
-                    + "&"
-                    + "longitude"
-                    + "="
-                    + URLEncoder.encode(Double.toString(mCurrentLocation.getLongitude()), "UTF-8")
-                    + "&"
-                    + "time"
-                    + "="
-                    + URLEncoder.encode(mLastUpdateTime, "UTF-8")
-                    + "&"
-                    + "";
-            //Sends info
-            conn.setFixedLengthStreamingMode(postdat.getBytes().length);
+
+            String attributesToSend = "userid=" + URLEncoder.encode(mUid, "UTF-8")
+                    + "&latitude=" + URLEncoder.encode(Double.toString(mCurrentLocation.getLatitude()), "UTF-8")
+                    + "&longitude=" + URLEncoder.encode(Double.toString(mCurrentLocation.getLongitude()), "UTF-8")
+                    + "&time=" + URLEncoder.encode(mLastUpdateTime, "UTF-8")
+                    + "&accuracy=" + URLEncoder.encode(Double.toString(mCurrentLocation.getAccuracy()), "UTF-8")
+                    + "&altitude=" + URLEncoder.encode(Double.toString(mCurrentLocation.getAltitude()), "UTF-8");
+
+            // Send location data.
+            conn.setFixedLengthStreamingMode(attributesToSend.getBytes().length);
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
             java.io.BufferedOutputStream out = new java.io.BufferedOutputStream(conn.getOutputStream());
-            PrintStream pstream = new PrintStream(out);
-            pstream.print(postdat);
-            pstream.close();
+            PrintStream pStream = new PrintStream(out);
+            pStream.print(attributesToSend);
+            pStream.close();
         }
         catch(java.net.MalformedURLException ex){
-            //Toast.makeText(this, ex.toString(), duration ).show();
+            // Error ignored, intentionally left blank.
         }
         catch(IOException e) {
-            //Toast.makeText(this, ex.toString(), duration).show();
+            // Error ignored, intentionally left blank.
         }
     }
 
+    /**
+     * Adds location record to history.
+     */
     private void logLocation() {
         mLocationHistoryManager.add(mCurrentLocation);
     }
@@ -430,7 +427,6 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onStop() {
         mGoogleApiClient.disconnect();
-        
         super.onStop();
     }
 
