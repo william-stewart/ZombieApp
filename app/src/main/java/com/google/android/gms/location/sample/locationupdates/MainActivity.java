@@ -16,6 +16,7 @@
 
 package com.google.android.gms.location.sample.locationupdates;
 
+import android.content.Intent;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.StrictMode;
@@ -40,12 +41,25 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLConnection;
 import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Locale;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 /**
  * Getting Location Updates.
@@ -122,6 +136,12 @@ public class MainActivity extends AppCompatActivity implements
     protected String mAccuracyLabel;
     protected String mLastUpdateTimeLabel;
 
+    //Whether or not user is infected
+    protected boolean isInfected = false;
+    protected TextView infectionStatus;
+
+    protected boolean isFirstBoot = true;
+
     /**
      * Tracks the status of the location updates request. Value changes when the user presses the
      * Start Updates and Stop Updates buttons.
@@ -141,9 +161,11 @@ public class MainActivity extends AppCompatActivity implements
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
 
+
+
         // Locate the UI widgets.
-        mStartUpdatesButton = (Button) findViewById(R.id.start_updates_button);
-        mStopUpdatesButton = (Button) findViewById(R.id.stop_updates_button);
+        //mStartUpdatesButton = (Button) findViewById(R.id.start_updates_button);
+        //mStopUpdatesButton = (Button) findViewById(R.id.stop_updates_button);
         mMapFragment = (MapFragment) getFragmentManager().findFragmentById(R.id.map_fragment);
         mUidTextView = (TextView) findViewById(R.id.uid_text);
         mLatitudeTextView = (TextView) findViewById(R.id.latitude_text);
@@ -151,6 +173,9 @@ public class MainActivity extends AppCompatActivity implements
         mAltitudeTextView = (TextView) findViewById(R.id.altitude_text);
         mAccuracyTextView = (TextView) findViewById(R.id.accuracy_text);
         mLastUpdateTimeTextView = (TextView) findViewById(R.id.last_update_time_text);
+
+        infectionStatus = (TextView) findViewById(R.id.textView2);
+        infectionStatus.append("not infected");
 
         // Set labels.
         mUidLabel = "UID";
@@ -177,9 +202,16 @@ public class MainActivity extends AppCompatActivity implements
         mUid = UidProvider.getUniqueId(this);
         mUidTextView.setText(String.format(Locale.US, "%s: %s", mUidLabel, mUid));
 
+        checkIfInfected();
+
         // Kick off the process of building a GoogleApiClient and requesting the LocationServices
         // API.
         buildGoogleApiClient();
+
+
+
+        startService(new Intent(getBaseContext(), MyService.class));
+
     }
 
     /**
@@ -300,11 +332,11 @@ public class MainActivity extends AppCompatActivity implements
      */
     private void setButtonsEnabledState() {
         if (mRequestingLocationUpdates) {
-            mStartUpdatesButton.setEnabled(false);
-            mStopUpdatesButton.setEnabled(true);
+           // mStartUpdatesButton.setEnabled(false);
+           // mStopUpdatesButton.setEnabled(true);
         } else {
-            mStartUpdatesButton.setEnabled(true);
-            mStopUpdatesButton.setEnabled(false);
+           // mStartUpdatesButton.setEnabled(true);
+           // mStopUpdatesButton.setEnabled(false);
         }
     }
 
@@ -327,7 +359,7 @@ public class MainActivity extends AppCompatActivity implements
         // If map is available, plot the location history.
         if(mMap != null) {
             // Remove all previous markers from map.
-            mMap.clear();
+            //mMap.clear();
 
             int index = 0;
             float markerAlpha;
@@ -340,10 +372,61 @@ public class MainActivity extends AppCompatActivity implements
 
                 index++;
                 // Focus and zoom the camera on the most recent marker
-                if (index == mLocationHistoryManager.getSize()) {
+
+                if (index == mLocationHistoryManager.getSize() && isFirstBoot) {
                     mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mLatLng, 20));
+                    displayBumpsOnMap();
                 }
+
             }
+        }
+        infectionStatus.append(Float.toString(mCurrentLocation.getAccuracy()));
+    }
+
+    private void displayBumpsOnMap(){
+        //Pulls data from a webservice and creates markers for each bump
+        Log.e("display bumps on map","method called");
+        try {
+            if (mMap != null) {
+                URL url = new URL("http://cs.furman.edu/~wstewart/displayinfectedtable.php");
+
+                // Read all the text returned by the server
+                BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()));
+                String str;
+                String dataLine = "";
+                while ((str = in.readLine()) != null) {
+                    // str is one line of text; readLine() strips the newline character(s)
+                    if (str.contains("<table>")) {
+                        dataLine = str;
+                    }
+                }
+                dataLine = dataLine.replaceAll("<td>", "");
+                dataLine = dataLine.replaceAll("</tr>", "");
+                dataLine = dataLine.replaceAll("<table>", "");
+                dataLine = dataLine.replaceAll("</table>", "");
+                dataLine = dataLine.replaceAll("</td>", "/");
+                //Log.e("raw",dataLine);
+                String[] lineSplit = dataLine.split("<tr>");
+                ArrayList<String> linesMinusTags = new ArrayList<String>();
+                //TODO: parse entirety of xml CHECK IF UID IS FIRST ELEMENT
+                //Split the individual lines and
+
+                for (String s : lineSplit) {
+                    String[] split = s.split("/");
+                    if(split.length >= 2) {
+                        double lat = Double.parseDouble(split[2]);
+                        double lng = Double.parseDouble(split[1]);
+                        //Log.e(Double.toString(lat), Double.toString(lng));
+                        LatLng latLng = new LatLng(lat, lng);
+                        mMap.addMarker(new MarkerOptions().position(latLng)); 
+                    }
+                }
+                in.close();
+            }else{Log.e("displaybumps","maps is null");}
+        }
+        catch(Exception e){
+            Log.e("displayBumpsOnMap()","something went wrong");
+            e.printStackTrace();
         }
     }
 
@@ -368,6 +451,8 @@ public class MainActivity extends AppCompatActivity implements
             PrintStream pStream = new PrintStream(out);
             pStream.print(attributesToSend);
             pStream.close();
+
+
         }
         catch(java.net.MalformedURLException ex){
             // Error ignored, intentionally left blank.
@@ -464,6 +549,52 @@ public class MainActivity extends AppCompatActivity implements
         }
     }
 
+    public void checkIfInfected(){
+        Log.e("Main activity","called checkIfInfected() method");
+
+        try {
+            // Create a URL for the desired page
+            URL url = new URL("http://cs.furman.edu/~wstewart/displayinfectedtable.php");
+
+            // Read all the text returned by the server
+            BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()));
+            String str;
+            String dataLine= "";
+            while ((str = in.readLine()) != null) {
+                // str is one line of text; readLine() strips the newline character(s)
+                if(str.contains("<table>")){
+                    dataLine=str;
+                }
+            }
+            dataLine = dataLine.replaceAll("<td>","");
+            dataLine = dataLine.replaceAll("</tr>","");
+            dataLine = dataLine.replaceAll("<table>","");
+            dataLine = dataLine.replaceAll("</table>","");
+            dataLine = dataLine.replaceAll("</td>","/");
+            //Log.e("raw",dataLine);
+            String[] lineSplit = dataLine.split("<tr>");
+            ArrayList<String> linesMinusTags = new ArrayList<String>();
+            //TODO: parse entirety of xml CHECK IF UID IS FIRST ELEMENT
+            //Split the individual lines and check first element in array
+
+            for(String s: lineSplit){
+                String[] split = s.split("/");
+                if(split[0].equals(mUid)){
+                    infectionStatus.setText("Infection status: You are infected!");
+                    Log.e("infected",split[0] + "%%%%" + mUid);
+                }else{
+                    Log.d("not infected",split[0] + "%%%%" + mUid);
+                }
+               // Log.e("from web",s);
+            }
+
+            in.close();
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * Callback that fires when the location changes.
      */
@@ -473,7 +604,8 @@ public class MainActivity extends AppCompatActivity implements
         mLastUpdateTime = Long.toString(mCurrentLocation.getTime() / 1000L);
         logLocation();
         updateUI();
-        notifyDatabase();
+        isFirstBoot = false;
+        //notifyDatabase();
         Toast.makeText(this, getResources().getString(R.string.location_updated_message),
                 Toast.LENGTH_SHORT).show();
     }
